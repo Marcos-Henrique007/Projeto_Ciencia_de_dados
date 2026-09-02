@@ -1,9 +1,6 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 
-from PIL import Image
-import numpy as np
-
 from wordcloud import WordCloud
 
 from scrapers.requests_scraper import (
@@ -24,7 +21,9 @@ from utils.text_processing import (
 # Configuração:
 
 st.set_page_config(
-    page_title="Web Scraping - Wikipédia"
+    page_title="Web Scraping - Wikipédia",
+    page_icon="",
+    layout="centered"
 )
 
 
@@ -33,13 +32,13 @@ st.set_page_config(
 def gerar_nuvem(texto):
 
     nuvem = WordCloud(
-        width=700,
-        height=350,
+        width=800,
+        height=400,
         background_color="white"
     ).generate(texto)
 
     figura, eixo = plt.subplots(
-        figsize=(8, 4)
+        figsize=(9, 4.5)
     )
 
     eixo.imshow(
@@ -52,87 +51,196 @@ def gerar_nuvem(texto):
     return figura
 
 
-def mostrar_resultado(
+def processar_resultado(
     nome_metodo,
     conteudo,
     duracao,
     palavra,
-    erros
+    erros,
+    progresso
 ):
 
-    if erros:
+    # Mostra o processamento:
 
-        for erro in erros:
+    with st.status(
+        "Processando...",
+        expanded=True
+    ) as status:
 
-            st.warning(
-                f"Não foi possível coletar: {erro}"
+        # Mostra as etapas realizadas:
+
+        for mensagem in progresso:
+
+            st.write(
+                mensagem
             )
 
-    if not conteudo:
 
-        st.error(
-            f"O método {nome_metodo} "
-            "não conseguiu coletar conteúdo."
+        # Mostra os erros encontrados:
+
+        if erros:
+
+            for erro in erros:
+
+                st.error(
+                    erro
+                )
+
+
+        # Verifica se algum conteúdo foi coletado:
+
+        if not conteudo:
+
+            status.update(
+                label="Erro durante o processamento",
+                state="error"
+            )
+
+            st.error(
+                f"O método {nome_metodo} "
+                "não conseguiu coletar conteúdo."
+            )
+
+
+            # Mostra detalhes do erro:
+
+            if erros:
+
+                st.write(
+                    "Detalhes do erro:"
+                )
+
+                for erro in erros:
+
+                    st.error(
+                        erro
+                    )
+
+            else:
+
+                st.warning(
+                    "O método terminou a execução, "
+                    "mas não retornou nenhum conteúdo."
+                )
+
+            return
+
+
+        # Processa o texto:
+
+        st.write(
+            "Processando texto..."
         )
 
-        return
-
-    texto_limpo = limpar_texto(
-        conteudo
-    )
-
-    texto_nuvem = remover_stopwords(
-        texto_limpo
-    )
-
-    if not texto_nuvem:
-
-        st.error(
-            "Não foi encontrado conteúdo suficiente."
+        texto_limpo = limpar_texto(
+            conteudo
         )
 
-        return
 
-    quantidade = contar_palavra(
-        texto_nuvem,
-        palavra
-    )
+        # Conta a palavra pesquisada:
+
+        st.write(
+            "Contando a palavra pesquisada..."
+        )
+
+        quantidade = contar_palavra(
+            texto_limpo,
+            palavra
+        )
+
+
+        # Remove as stopwords:
+
+        st.write(
+            "Removendo stopwords..."
+        )
+
+        texto_nuvem = remover_stopwords(
+            texto_limpo
+        )
+
+
+        # Verifica se existe texto para a nuvem:
+
+        if not texto_nuvem:
+
+            status.update(
+                label="Não foi possível gerar a nuvem",
+                state="error"
+            )
+
+            st.error(
+                "Não foi encontrado conteúdo suficiente "
+                "após o processamento."
+            )
+
+            return
+
+
+        # Gera a nuvem:
+
+        st.write(
+            "Gerando nuvem de palavras..."
+        )
+
+        figura = gerar_nuvem(
+            texto_nuvem
+        )
+
+
+        # Finaliza o processamento:
+
+        status.update(
+            label="Processamento concluído!",
+            state="complete"
+        )
+
+
+    # Mostra o resultado:
 
     st.subheader(
         nome_metodo
     )
 
+
     col1, col2 = st.columns(2)
+
 
     with col1:
 
         st.metric(
-            "Tempo",
+            "Tempo de execução",
             f"{duracao:.2f} s"
         )
+
 
     with col2:
 
         st.metric(
-            "Ocorrências",
+            f"Ocorrências de '{palavra}'",
             quantidade
         )
 
+
     st.write(
-        f"A palavra **'{palavra}'** "
+        f"A palavra **{palavra}** "
         f"apareceu **{quantidade} vezes**."
     )
 
-    figura = gerar_nuvem(
-        texto_nuvem
+
+    st.write(
+        "Nuvem de palavras:"
     )
+
 
     st.pyplot(
-        figura,
-        width="stretch"
+        figura
     )
 
-    plt.close(figura)
+
+    plt.close(
+        figura
+    )
 
 
 # Tela principal:
@@ -141,13 +249,17 @@ st.title(
     "Web Scraping na Wikipédia"
 )
 
-st.caption(
-    "Requests + BeautifulSoup x Scrapy"
+st.write(
+    "Comparação entre Requests + BeautifulSoup "
+    "e Scrapy utilizando cinco páginas da Wikipédia."
 )
 
 
-entrada = st.text_input(
-    "Digite 5 assuntos separados por vírgula:",
+st.divider()
+
+
+entrada = st.text_area(
+    "Digite exatamente 5 assuntos diferentes:",
     placeholder=(
         "Ciência de Dados, Engenharia de Software, "
         "Aprendizado de Máquina, Banco de Dados, UFRN"
@@ -160,12 +272,23 @@ palavra_busca = st.text_input(
 )
 
 
+st.divider()
+
+
+# Organiza os assuntos digitados:
+
 assuntos = [
+
     assunto.strip()
+
     for assunto in entrada.split(",")
+
     if assunto.strip()
+
 ]
 
+
+# Botões:
 
 coluna1, coluna2 = st.columns(2)
 
@@ -173,7 +296,7 @@ coluna1, coluna2 = st.columns(2)
 with coluna1:
 
     executar_requests = st.button(
-        "Requests + BeautifulSoup",
+        "Executar Requests + BeautifulSoup",
         use_container_width=True
     )
 
@@ -181,43 +304,98 @@ with coluna1:
 with coluna2:
 
     executar_scrapy = st.button(
-        "Scrapy",
+        "Executar Scrapy",
         use_container_width=True
     )
 
 
-# Requests com BeautifulSoup:
+# Validação dos dados:
 
-if executar_requests:
+def validar_entrada():
+
+    st.write(
+        "Validando os dados..."
+    )
+
+
+    # Verifica se foram digitados exatamente 5 assuntos:
 
     if len(assuntos) != 5:
 
         st.warning(
-            "Digite exatamente 5 assuntos."
+            "Você precisa informar exatamente "
+            "5 assuntos."
         )
 
-    elif not palavra_busca.strip():
+        return False
+
+
+    # Verifica se os assuntos são diferentes:
+
+    assuntos_normalizados = [
+
+        assunto.lower()
+
+        for assunto in assuntos
+
+    ]
+
+
+    if len(
+        set(assuntos_normalizados)
+    ) != 5:
 
         st.warning(
-            "Digite uma palavra para pesquisar."
+            "Os 5 assuntos precisam ser diferentes."
         )
 
-    else:
+        return False
+
+
+    # Verifica a palavra pesquisada:
+
+    if not palavra_busca.strip():
+
+        st.warning(
+            "Digite também uma palavra para pesquisar."
+        )
+
+        return False
+
+
+    return True
+
+
+# Requests + BeautifulSoup:
+
+if executar_requests:
+
+    if validar_entrada():
 
         with st.spinner(
             "Executando Requests + BeautifulSoup..."
         ):
 
-            conteudo, duracao, erros = (
-                coletar_requests(assuntos)
+            (
+                conteudo,
+                duracao,
+                erros,
+                progresso
+            ) = coletar_requests(
+                assuntos
             )
 
-        mostrar_resultado(
+
+        st.divider()
+
+
+        processar_resultado(
             "Requests + BeautifulSoup",
             conteudo,
             duracao,
             palavra_busca,
-            erros
+            erros,
+            progresso
         )
 
 
@@ -225,32 +403,30 @@ if executar_requests:
 
 if executar_scrapy:
 
-    if len(assuntos) != 5:
-
-        st.warning(
-            "Digite exatamente 5 assuntos."
-        )
-
-    elif not palavra_busca.strip():
-
-        st.warning(
-            "Digite uma palavra para pesquisar."
-        )
-
-    else:
+    if validar_entrada():
 
         with st.spinner(
             "Executando Scrapy..."
         ):
 
-            conteudo, duracao, erros = (
-                coletar_scrapy(assuntos)
+            (
+                conteudo,
+                duracao,
+                erros,
+                progresso
+            ) = coletar_scrapy(
+                assuntos
             )
 
-        mostrar_resultado(
+
+        st.divider()
+
+
+        processar_resultado(
             "Scrapy",
             conteudo,
             duracao,
             palavra_busca,
-            erros
+            erros,
+            progresso
         )
